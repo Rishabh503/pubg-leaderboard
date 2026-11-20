@@ -10,7 +10,36 @@ export default function App() {
   const [day, setDay] = useState(new Date().toLocaleDateString('en-CA'));
   const [boardMode, setBoardMode] = useState('global');
   const [historyMode, setHistoryMode] = useState('all');
-  useEffect(() => localStorage.setItem(key, JSON.stringify(data)), [data]);
+  const [sharedReady, setSharedReady] = useState(false);
+  const [sharedStatus, setSharedStatus] = useState('Connecting…');
+  useEffect(() => {
+    let active = true;
+    const localData = data;
+    const sync = async (initialize = false) => {
+      try {
+        const response = await fetch('/api/leaderboard');
+        if (!response.ok) throw new Error('API unavailable');
+        const result = await response.json();
+        if (!active) return;
+        if (result.data) setData(result.data);
+        else if (initialize) {
+          const save = await fetch('/api/leaderboard', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: localData }) });
+          if (!save.ok) throw new Error('Could not initialize shared data');
+        }
+        setSharedReady(true);
+        setSharedStatus('Shared');
+      } catch {
+        if (active) { setSharedReady(true); setSharedStatus('Local only · check DATABASE_URL'); }
+      }
+    };
+    sync(true);
+    const timer = setInterval(() => sync(false), 5000);
+    return () => { active = false; clearInterval(timer); };
+  }, []);
+  useEffect(() => {
+    localStorage.setItem(key, JSON.stringify(data));
+    if (sharedReady && sharedStatus === 'Shared') fetch('/api/leaderboard', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data }) }).catch(() => setSharedStatus('Sync issue'));
+  }, [data, sharedReady]);
   const dayMatches = useMemo(() => data.matches.filter(m => new Date(m.at).toLocaleDateString('en-CA') === day), [data, day]);
   const makeStandings = matches => data.players.map((name, id) => ({ id, name, points: matches.reduce((sum, match) => sum + (match.winners.includes(id) ? match.points : 0), 0), wins: matches.filter(m => m.winners.includes(id)).length })).sort((a, b) => b.points - a.points || b.wins - a.wins || a.id - b.id);
   const standings = useMemo(() => makeStandings(data.matches), [data]);
@@ -23,7 +52,7 @@ export default function App() {
   const reset = () => { if (window.confirm('Reset all scores and match history?')) setData(d => ({ ...d, matches: [] })); };
   const winnerName = ids => ids.map(id => data.players[id]).join(' & ');
   return <main className="shell">
-    <header className="topbar"><a className="brand" href="#"><span className="brand-icon"><Crosshair size={19}/></span><span>DROPZONE<span className="brand-sub">TRIO TRACKER</span></span></a><div className="season"><i/> SQUAD SESSION <span>·</span> ERANGEL</div></header>
+    <header className="topbar"><a className="brand" href="#"><span className="brand-icon"><Crosshair size={19}/></span><span>DROPZONE<span className="brand-sub">TRIO TRACKER</span></span></a><div className="season"><i/> {sharedStatus.toUpperCase()} <span>·</span> ERANGEL</div></header>
     <section className="hero"><div><div className="eyebrow"><span/> YOUR CREW. YOUR CROWN.</div><h1>TRIO <em>LEADERBOARD</em></h1><p>Every drop counts. Track the wins, own the bragging rights.</p></div><div className="match-count"><span className="count-label">MATCHES PLAYED</span><strong>{String(data.matches.length).padStart(2, '0')}</strong><span className="count-foot">THIS SESSION</span></div></section>
     <div className="lower-grid"><section className="panel record-panel"><div className="section-head"><div><Swords size={17}/><h2>RECORD A MATCH</h2></div><span className="section-note">PICK THE WINNER</span></div><div className="mode-label">SOLO WIN <span>·</span> 4 POINTS</div><div className="winner-grid">{data.players.map((p,i)=><button className="winner-btn" key={`solo${i}`} onClick={()=>record(i,1)}><span>{p}</span><ChevronRight size={15}/></button>)}</div><div className="mode-label duo-label">DUO WIN <span>·</span> 2 POINTS EACH</div><div className="duo-grid">{[[0,1],[0,2],[1,2]].map(([a,b])=><button className="duo-btn" key={`${a}${b}`} onClick={()=>record([a,b],2)}><span>{data.players[a]} <b>+</b> {data.players[b]}</span><ChevronRight size={15}/></button>)}</div><div className="scoring-note">LOSERS RECEIVE <b>0 POINTS</b></div></section>
     <section className="board panel"><div className="section-head"><div><Trophy size={17}/><h2>{boardMode === 'global' ? 'GLOBAL LEADERBOARD' : 'DAILY LEADERBOARD'}</h2></div><div className="board-controls"><select aria-label="Leaderboard period" value={boardMode} onChange={e=>setBoardMode(e.target.value)}><option value="global">Global</option><option value="daily">By date</option></select>{boardMode==='daily'&&<input aria-label="Leaderboard date" type="date" value={day} onChange={e=>setDay(e.target.value)}/>}</div></div><div className="table-head"><span>RANK / PLAYER</span><span>WINS</span><span>POINTS</span></div>{shownStandings.map((p, i) => <div className={`player-row ${i === 0 && (boardMode==='global'?data.matches.length:dayMatches.length) ? 'leader' : ''}`} key={p.id}><div className="player-info"><span className={`rank ${i===0?'gold':''}`}>{String(i+1).padStart(2,'0')}</span><span className="avatar">{(p.name.trim()[0] || '?').toUpperCase()}</span><input aria-label={`Player ${i+1} name`} value={p.name} maxLength={24} onChange={e=>updateName(p.id,e.target.value)} /></div><span className="wins">{p.wins}</span><strong className="points">{p.points}<small> PTS</small></strong></div>)}<div className="board-actions"><span>POINTS DECIDE THE DROP.</span><div><button className="text-btn" onClick={reset}><RotateCcw size={14}/> RESET</button><button className="copy-btn" onClick={copy}>{copied?<Check size={14}/>:<Copy size={14}/>} {copied?'COPIED':'COPY SCORES'}</button></div></div></section>
