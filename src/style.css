@@ -1,4 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800;900&family=DM+Sans:wght@400;500;600;700&display=swap');
+ .delete-match{flex:none;display:grid;place-items:center;width:30px;height:30px;border:1px solid #ffffff16;background:transparent;color:#89917e;cursor:pointer}.delete-match:hover{border-color:#e86d58;color:#ff8974;background:#e86d5812}
 select{color-scheme:dark}select option{background:#1d231b;color:#e8e9df}
 /* Compact controls and single-column mobile-first flow */
 @tailwind base;
